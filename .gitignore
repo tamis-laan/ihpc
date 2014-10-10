@@ -1,3 +1,9 @@
+# Build files
+build/
+
+# IDE files
+.kdev4/
+
 # Compiled Object files
 *.slo
 *.lo
