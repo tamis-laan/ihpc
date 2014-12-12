@@ -2,10 +2,35 @@
 
 import subprocess
 import json
+import matplotlib.pyplot as plt
 
 #Run a experiment
+#	p  : number of processors
+#	px : number of processors in x
+#	py : number of processors in y
+#	o  : bool to output file
+#	w  : omega relaxation parameter 
 def run(p,px,py,o,w):
 	subprocess.call(["mpirun", "-n", str(p), "./build/ihpc2", str(px), str(py), str(o), str(w)])
 	return json.load(open('meta.json'))
 
-data = run(4,2,2,0,1.9)
+def experiment_22():
+	exp = {"w":[],"it":[],"time":[]}
+	for i in range(0,10):
+		w = 1.9+i/100.0
+		data = run(4,4,1,0,w)
+		
+		exp["w"].append(w)
+		exp["it"].append(data["iterations"])
+		exp["time"].append(data["time"])
+
+	plt.plot(exp["w"],exp["it"])
+	plt.show()
+	plt.plot(exp["w"],exp["time"])
+	plt.show()
+
+def experiment_23():
+	for c in [[4,1],[2,2]]:
+		for g in [[200,200],[400,400],[800,800]]:
+			data = run(4,c[0],c[1],0,1.95)
+
