@@ -320,15 +320,9 @@ void Setup_Proc_Grid(int argc, char **argv)
 	MPI_Comm_rank(grid_comm, &proc_rank);
 	MPI_Cart_coords(grid_comm, proc_rank, 2, proc_coord);
 	
-	printf("(%i) (x,y)=(%i,%i)\n", proc_rank, proc_coord[X_DIR], proc_coord[Y_DIR]);
-	
 	/* calculate ranks of neighbouring processes */
 	MPI_Cart_shift(grid_comm, X_DIR, 1, &proc_left, &proc_right);
 	MPI_Cart_shift(grid_comm, Y_DIR, 1, &proc_top, &proc_bottom);
-	
-	if (DEBUG)
-		printf("(%i) top %i, right %i, bottom %i, left %i\n",
-			proc_rank, proc_top, proc_right, proc_bottom, proc_left);
 }
 
 void Setup_MPI_Datatypes()
