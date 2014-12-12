@@ -26,8 +26,6 @@ double precision_goal;		/* precision_goal of solution */
 int max_iter;			/* maximum number of iterations alowed */
 
 /* benchmark related variables */
-clock_t ticks;			/* number of systemticks */
-int timer_on = 0;		/* is timer running? */
 double wtime;			/* wallclock time */
 
 /* local grid related variables */
@@ -46,6 +44,10 @@ int P_grid[2];			/* processgrid dimensions */
 MPI_Comm grid_comm;		/* grid COMMUNICATOR */
 MPI_Status status;
 
+bool write_output = true;
+double omega = 1.95;		/* relaxation parameter */
+std::ofstream meta;
+
 int offset[2];
 MPI_Datatype border_type[2];
 
@@ -56,53 +58,20 @@ void Write_Grid();
 void Clean_Up();
 void Debug(char *mesg, int terminate);
 void start_timer();
-void resume_timer();
-void stop_timer();
 void print_timer();
 
 void start_timer()
 {
-  if (!timer_on)
-  {
-    MPI_Barrier(MPI_COMM_WORLD);
-    ticks = clock();
-    wtime = MPI_Wtime();
-    timer_on = 1;
-  }
-}
-
-void resume_timer()
-{
-  if (!timer_on)
-  {
-    ticks = clock() - ticks;
-    wtime = MPI_Wtime() - wtime;
-    timer_on = 1;
-  }
-}
-
-void stop_timer()
-{
-  if (timer_on)
-  {
-    ticks = clock() - ticks;
-    wtime = MPI_Wtime() - wtime;
-    timer_on = 0;
-  }
+	MPI_Barrier(MPI_COMM_WORLD);
+	wtime = MPI_Wtime();
 }
 
 void print_timer()
 {
-  if (timer_on)
-  {
-    stop_timer();
-    printf("(%i) Elapsed Wtime: %14.6f s (%5.1f%% CPU)\n",
-           proc_rank, wtime, 100.0 * ticks * (1.0 / CLOCKS_PER_SEC) / wtime);
-    resume_timer();
-  }
-  else
-    printf("(%i) Elapsed Wtime: %14.6f s (%5.1f%% CPU)\n",
-           proc_rank, wtime, 100.0 * ticks * (1.0 / CLOCKS_PER_SEC) / wtime);
+	MPI_Barrier(MPI_COMM_WORLD);
+	meta << ", 'time' : " << (MPI_Wtime() - wtime);
+	// ticks = clock() - ticks;
+	// 100.0 * ticks * (1.0 / CLOCKS_PER_SEC) / wtime // CPU utilization
 }
 
 void Debug(char *mesg, int terminate)
@@ -233,53 +202,58 @@ void Exchange_Borders()
 
 double Do_Step(int parity)
 {
-  int x, y;
-  double old_phi;
-  double max_err = 0.0;
+	int x, y;
+	double max_err = 0.0;
 
-  /* calculate interior of grid */
-  for (x = 1; x < dim[X_DIR] - 1; x++)
-    for (y = 1; y < dim[Y_DIR] - 1; y++)
-      if ((offset[X_DIR] + x + offset[Y_DIR] + y) % 2 == parity && source[x][y] != 1)
-      {
-	old_phi = phi[x][y];
-	phi[x][y] = (phi[x + 1][y] + phi[x - 1][y] +
-		     phi[x][y + 1] + phi[x][y - 1]) * 0.25;
-	if (max_err < fabs(old_phi - phi[x][y]))
-	  max_err = fabs(old_phi - phi[x][y]);
-      }
-      
-  Exchange_Borders();
-  return max_err;
+	/* calculate interior of grid */
+	for (x = 1; x < dim[X_DIR] - 1; x++)
+	for (y = 1; y < dim[Y_DIR] - 1; y++)
+		if ((offset[X_DIR] + x + offset[Y_DIR] + y) % 2 == parity && source[x][y] != 1)
+		{
+			double delta = (
+				phi[x + 1][y] + phi[x - 1][y] +
+				phi[x][y + 1] + phi[x][y - 1]
+			) * 0.25 - phi[x][y];
+			
+			delta *= omega;
+			
+			phi[x][y] += delta;
+			
+			if (max_err < fabs(delta))
+				max_err = fabs(delta);
+		}
+	
+	Exchange_Borders();
+	return max_err;
 }
 
 void Solve()
 {
-  int count = 0;
-  double delta;
-  double delta1, delta2;
+	int count = 0;
+	double delta;
+	double delta1, delta2;
 
-  Debug("Solve", 0);
+	Debug("Solve", 0);
 
-  /* give global_delta a higher value then precision_goal */
-  delta = 2 * precision_goal;
+	/* give global_delta a higher value then precision_goal */
+	delta = 2 * precision_goal;
 
-  while (delta > precision_goal && count < max_iter)
-  {
-    Debug("Do_Step 0", 0);
-    delta1 = Do_Step(0);
+	while (delta > precision_goal && count < max_iter)
+	{
+		Debug("Do_Step 0", 0);
+		delta1 = Do_Step(0);
 
-    Debug("Do_Step 1", 0);
-    delta2 = Do_Step(1);
+		Debug("Do_Step 1", 0);
+		delta2 = Do_Step(1);
 
-    delta = max(delta1, delta2);
-    
-    MPI_Allreduce(&delta, &delta, 1, MPI_DOUBLE, MPI_MAX, grid_comm);
-    
-    count++;
-  }
+		delta = max(delta1, delta2);
+		
+		MPI_Allreduce(&delta, &delta, 1, MPI_DOUBLE, MPI_MAX, grid_comm);
+		
+		count++;
+	}
 
-  printf("%d: Number of iterations : %i\n", proc_rank, count);
+	meta << "'iterations' : " << count;
 }
 
 void Write_Grid()
@@ -330,6 +304,8 @@ void Setup_Proc_Grid(int argc, char **argv)
 		P_grid[Y_DIR] = atoi(argv[2]);
 		if (P_grid[X_DIR] * P_grid[Y_DIR] != P)
 			Debug("ERROR : Proces grid dimensions do not match with P", 1);
+		if (argc > 3) write_output = atoi(argv[3]);
+		if (argc > 4) omega        = atof(argv[4]);
 	}
 	else
 		Debug("ERROR : Wrong parameterinput", 1);
@@ -373,13 +349,22 @@ int main(int argc, char **argv)
 	MPI_Init(&argc, &argv);
 	Setup_Proc_Grid(argc, argv);
 	
+	if (proc_rank == 0)
+		meta.open("meta.json");
+	else
+		meta.open("/dev/null");
+	
+	meta << "{";
+	
 	start_timer();
 	Setup_Grid();
 	Setup_MPI_Datatypes();
 	Solve();
-	Write_Grid();
+	if (write_output) Write_Grid();
 	print_timer();
 	Clean_Up();
+	
+	meta << "}";
 	
 	MPI_Finalize();
 }
