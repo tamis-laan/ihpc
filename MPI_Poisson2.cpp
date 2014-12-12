@@ -69,7 +69,7 @@ void start_timer()
 void print_timer()
 {
 	MPI_Barrier(MPI_COMM_WORLD);
-	meta << ", 'time' : " << (MPI_Wtime() - wtime);
+	meta << ", \"time\" : " << (MPI_Wtime() - wtime);
 	// ticks = clock() - ticks;
 	// 100.0 * ticks * (1.0 / CLOCKS_PER_SEC) / wtime // CPU utilization
 }
@@ -253,7 +253,7 @@ void Solve()
 		count++;
 	}
 
-	meta << "'iterations' : " << count;
+	meta << "\"iterations\" : " << count;
 }
 
 void Write_Grid()
