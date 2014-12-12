@@ -21,9 +21,9 @@ enum
 };
 
 /* global variables */
-int gridsize[2];
-double precision_goal;		/* precision_goal of solution */
-int max_iter;			/* maximum number of iterations alowed */
+int gridsize[2] = {100, 100};
+double precision_goal = 0.0001;	/* precision_goal of solution */
+int max_iter = 5000;		/* maximum number of iterations alowed */
 
 /* benchmark related variables */
 double wtime;			/* wallclock time */
@@ -94,10 +94,10 @@ void Setup_Grid()
 		f = fopen("input.dat", "r");
 		if (f == NULL)
 		Debug("Error opening input.dat", 1);
-		fscanf(f, "nx: %i\n", &gridsize[X_DIR]);
-		fscanf(f, "ny: %i\n", &gridsize[Y_DIR]);
-		fscanf(f, "precision goal: %lf\n", &precision_goal);
-		fscanf(f, "max iterations: %i\n", &max_iter);
+//		fscanf(f, "nx: %i\n", &gridsize[X_DIR]);
+//		fscanf(f, "ny: %i\n", &gridsize[Y_DIR]);
+//		fscanf(f, "precision goal: %lf\n", &precision_goal);
+//		fscanf(f, "max iterations: %i\n", &max_iter);
 	}
 	
 	MPI_Bcast( gridsize,       2, MPI_INT,    0, MPI_COMM_WORLD); /* broadcast the array gridsize in one call */
@@ -304,8 +304,12 @@ void Setup_Proc_Grid(int argc, char **argv)
 		P_grid[Y_DIR] = atoi(argv[2]);
 		if (P_grid[X_DIR] * P_grid[Y_DIR] != P)
 			Debug("ERROR : Proces grid dimensions do not match with P", 1);
-		if (argc > 3) write_output = atoi(argv[3]);
-		if (argc > 4) omega        = atof(argv[4]);
+		if (argc > 3) write_output    = atoi(argv[3]);
+		if (argc > 4) omega           = atof(argv[4]);
+		if (argc > 5) gridsize[X_DIR] = atoi(argv[5]);
+		if (argc > 6) gridsize[Y_DIR] = atoi(argv[6]);
+		if (argc > 7) precision_goal  = atof(argv[7]);
+		if (argc > 8) max_iter        = atoi(argv[8]);
 	}
 	else
 		Debug("ERROR : Wrong parameterinput", 1);
