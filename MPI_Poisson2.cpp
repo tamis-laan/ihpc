@@ -220,9 +220,7 @@ double Do_Step(int parity)
 				phi[x][y + 1] + phi[x][y - 1]
 			) * 0.25 - phi[x][y];
 			
-			delta *= omega;
-			
-			phi[x][y] += delta;
+			phi[x][y] += delta * omega;
 			
 			if (max_err < fabs(delta))
 				max_err = fabs(delta);
