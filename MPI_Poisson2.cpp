@@ -56,6 +56,7 @@ int P_grid[2];			/* processgrid dimensions */
 MPI_Comm grid_comm;		/* grid COMMUNICATOR */
 MPI_Status status;
 
+bool optimized_step = false;
 bool write_output = true;
 double omega = 1.95;		/* relaxation parameter */
 int sweeps = 1;                 // number of sweeps between Exchange_Borders
@@ -231,6 +232,30 @@ double Do_Step(int parity, int n)
 	return max_err;
 }
 
+double Do_Step_opt(int parity, int n)
+{
+	double max_err = 0.0;
+
+	int p1 = (offset[X_DIR] + offset[Y_DIR] + parity) & 1;
+	for (int x = 1; x < dim[X_DIR] - 1; x++, p1 ^= 1)
+	for (int y = 1 + p1; y < dim[Y_DIR] - 1; y += 2)
+		if (source[x][y] != 1)
+		{
+			double delta = (
+				phi[x + 1][y] + phi[x - 1][y] +
+				phi[x][y + 1] + phi[x][y - 1]
+			) * 0.25 - phi[x][y];
+			
+			phi[x][y] += delta * omega;
+			
+			if (max_err < fabs(delta))
+				max_err = fabs(delta);
+		}
+	
+	if (n % sweeps == 0) Exchange_Borders();
+	return max_err;
+}
+
 void Solve()
 {
 	Debug("Solve", 0);
@@ -240,8 +265,14 @@ void Solve()
 	int n = 0;
 	while (error.size() < max_iter)
 	{
-		double delta1 = Do_Step(0, ++n);
-		double delta2 = Do_Step(1, ++n);
+		double delta1, delta2;
+		if (optimized_step) {
+			delta1 = Do_Step_opt(0, ++n);
+			delta2 = Do_Step_opt(1, ++n);
+		} else {
+			delta1 = Do_Step(0, ++n);
+			delta2 = Do_Step(1, ++n);
+		}
 		double delta = std::max(delta1, delta2);
 		MPI_Allreduce(&delta, &delta, 1, MPI_DOUBLE, MPI_MAX, grid_comm);
 		error.push_back(delta);
@@ -299,13 +330,14 @@ void Setup_Proc_Grid(int argc, char **argv)
 		P_grid[Y_DIR] = atoi(argv[2]);
 		if (P_grid[X_DIR] * P_grid[Y_DIR] != P)
 			Debug("ERROR : Proces grid dimensions do not match with P", 1);
-		if (argc > 3) write_output    = atoi(argv[3]);
-		if (argc > 4) omega           = atof(argv[4]);
-		if (argc > 5) gridsize[X_DIR] = atoi(argv[5]);
-		if (argc > 6) gridsize[Y_DIR] = atoi(argv[6]);
-		if (argc > 7) precision_goal  = atof(argv[7]);
-		if (argc > 8) max_iter        = atoi(argv[8]);
-		if (argc > 9) sweeps          = atoi(argv[9]);
+		if (argc >  3) write_output    = atoi(argv[ 3]);
+		if (argc >  4) omega           = atof(argv[ 4]);
+		if (argc >  5) gridsize[X_DIR] = atoi(argv[ 5]);
+		if (argc >  6) gridsize[Y_DIR] = atoi(argv[ 6]);
+		if (argc >  7) precision_goal  = atof(argv[ 7]);
+		if (argc >  8) max_iter        = atoi(argv[ 8]);
+		if (argc >  9) sweeps          = atoi(argv[ 9]);
+		if (argc > 10) optimized_step  = atoi(argv[10]);
 	}
 	else
 		Debug("ERROR : Wrong parameterinput", 1);
