@@ -10,10 +10,22 @@
 #include <mpi/mpi.h>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <iterator>
+#include <algorithm>
+
+template <typename T>
+std::ostream &operator<<(std::ostream &out, const std::vector<T> &vec)
+{
+	out << "[";
+	if (!vec.empty()) {
+		std::copy_n(begin(vec), vec.size() - 1, std::ostream_iterator<T>(out, ","));
+		out << vec.back();
+	}
+	return out << "]";
+}
 
 #define DEBUG 0
-
-#define max(a,b) ((a)>(b)?a:b)
 
 enum
 {
@@ -74,7 +86,7 @@ void print_timer()
 	// 100.0 * ticks * (1.0 / CLOCKS_PER_SEC) / wtime // CPU utilization
 }
 
-void Debug(char *mesg, int terminate)
+void Debug(const char *mesg, int terminate)
 {
   if (DEBUG || terminate)
     printf("%d: %s\n", proc_rank, mesg);
@@ -84,20 +96,13 @@ void Debug(char *mesg, int terminate)
 
 void Setup_Grid()
 {
-	int x, y, s, upper_offset[2];
-	double source_x, source_y, source_val;
 	FILE *f;
 	
 	Debug("Setup_Subgrid", 0);
 	
 	if (proc_rank == 0) {
 		f = fopen("input.dat", "r");
-		if (f == NULL)
-		Debug("Error opening input.dat", 1);
-//		fscanf(f, "nx: %i\n", &gridsize[X_DIR]);
-//		fscanf(f, "ny: %i\n", &gridsize[Y_DIR]);
-//		fscanf(f, "precision goal: %lf\n", &precision_goal);
-//		fscanf(f, "max iterations: %i\n", &max_iter);
+		if (f == NULL) Debug("Error opening input.dat", 1);
 	}
 	
 	MPI_Bcast( gridsize,       2, MPI_INT,    0, MPI_COMM_WORLD); /* broadcast the array gridsize in one call */
@@ -107,16 +112,14 @@ void Setup_Grid()
 	/* Calculate top left corner coordinates of local grid */
 	offset[X_DIR] = gridsize[X_DIR] * proc_coord[X_DIR] / P_grid[X_DIR];
 	offset[Y_DIR] = gridsize[Y_DIR] * proc_coord[Y_DIR] / P_grid[Y_DIR];
-	upper_offset[X_DIR] = gridsize[X_DIR] * (proc_coord[X_DIR] + 1) / P_grid[X_DIR];
-	upper_offset[Y_DIR] = gridsize[Y_DIR] * (proc_coord[Y_DIR] + 1) / P_grid[Y_DIR];
 	
 	/* Calculate dimensions of local grid */
-	dim[Y_DIR] = upper_offset[Y_DIR] - offset[Y_DIR];
-	dim[X_DIR] = upper_offset[X_DIR] - offset[X_DIR];
+	dim[X_DIR] = (gridsize[X_DIR] * (proc_coord[X_DIR] + 1) / P_grid[X_DIR]) - offset[X_DIR];
+	dim[Y_DIR] = (gridsize[Y_DIR] * (proc_coord[Y_DIR] + 1) / P_grid[Y_DIR]) - offset[Y_DIR];
 	
 	/* Add space for rows columns of neighboring grid */
-	dim[Y_DIR] += 2;
 	dim[X_DIR] += 2;
+	dim[Y_DIR] += 2;
 	
 	/* allocate memory */
 	if ((phi = static_cast<double **>(malloc(dim[X_DIR] * sizeof(*phi)))) == NULL)
@@ -128,23 +131,25 @@ void Setup_Grid()
 	if ((source[0] = static_cast<int *>(malloc(dim[Y_DIR] * dim[X_DIR] * sizeof(**source)))) == NULL)
 		Debug("Setup_Subgrid : malloc(*source) failed", 1);
 	
-	for (x = 1; x < dim[X_DIR]; x++)
+	for (int x = 1; x < dim[X_DIR]; x++)
 	{
 		phi[x] = phi[0] + x * dim[Y_DIR];
 		source[x] = source[0] + x * dim[Y_DIR];
 	}
 	
 	/* set all values to '0' */
-	for (x = 0; x < dim[X_DIR]; x++)
-	for (y = 0; y < dim[Y_DIR]; y++)
+	for (int x = 0; x < dim[X_DIR]; x++)
+	for (int y = 0; y < dim[Y_DIR]; y++)
 	{
 		phi[x][y] = 0.0;
 		source[x][y] = 0;
 	}
 	
 	/* put sources in field */
+	int s;
 	do
 	{
+		double source_x, source_y, source_val;
 		if (proc_rank == 0)
 			s = fscanf(f, "source: %lf %lf %lf\n", &source_x, &source_y, &source_val);
 		
@@ -156,8 +161,8 @@ void Setup_Grid()
 			MPI_Bcast(&source_y,   1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 			MPI_Bcast(&source_val, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 			
-			x = source_x * gridsize[X_DIR];
-			y = source_y * gridsize[Y_DIR];
+			int x = source_x * gridsize[X_DIR];
+			int y = source_y * gridsize[Y_DIR];
 			x += 1;
 			y += 1;
 			
@@ -229,31 +234,21 @@ double Do_Step(int parity)
 
 void Solve()
 {
-	int count = 0;
-	double delta;
-	double delta1, delta2;
-
 	Debug("Solve", 0);
 
-	/* give global_delta a higher value then precision_goal */
-	delta = 2 * precision_goal;
+	std::vector<double> error;
 
-	while (delta > precision_goal && count < max_iter)
+	while (error.size() < max_iter)
 	{
-		Debug("Do_Step 0", 0);
-		delta1 = Do_Step(0);
-
-		Debug("Do_Step 1", 0);
-		delta2 = Do_Step(1);
-
-		delta = max(delta1, delta2);
-		
+		double delta1 = Do_Step(0);
+		double delta2 = Do_Step(1);
+		double delta = std::max(delta1, delta2);
 		MPI_Allreduce(&delta, &delta, 1, MPI_DOUBLE, MPI_MAX, grid_comm);
-		
-		count++;
+		error.push_back(delta);
+		if (delta <= precision_goal) break;
 	}
 
-	meta << "\"iterations\" : " << count;
+	meta << "\"iterations\" : " << error.size() << ", " << "\"errors\" : " << error;
 }
 
 void Write_Grid()
