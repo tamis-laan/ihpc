@@ -58,6 +58,7 @@ MPI_Status status;
 
 bool write_output = true;
 double omega = 1.95;		/* relaxation parameter */
+int sweeps = 1;                 // number of sweeps between Exchange_Borders
 std::ofstream meta;
 
 int offset[2];
@@ -205,7 +206,7 @@ void Exchange_Borders()
                grid_comm, &status);
 }
 
-double Do_Step(int parity)
+double Do_Step(int parity, int n)
 {
 	int x, y;
 	double max_err = 0.0;
@@ -226,7 +227,7 @@ double Do_Step(int parity)
 				max_err = fabs(delta);
 		}
 	
-	Exchange_Borders();
+	if (n % sweeps == 0) Exchange_Borders();
 	return max_err;
 }
 
@@ -236,10 +237,11 @@ void Solve()
 
 	std::vector<double> error;
 
+	int n = 0;
 	while (error.size() < max_iter)
 	{
-		double delta1 = Do_Step(0);
-		double delta2 = Do_Step(1);
+		double delta1 = Do_Step(0, ++n);
+		double delta2 = Do_Step(1, ++n);
 		double delta = std::max(delta1, delta2);
 		MPI_Allreduce(&delta, &delta, 1, MPI_DOUBLE, MPI_MAX, grid_comm);
 		error.push_back(delta);
@@ -303,6 +305,7 @@ void Setup_Proc_Grid(int argc, char **argv)
 		if (argc > 6) gridsize[Y_DIR] = atoi(argv[6]);
 		if (argc > 7) precision_goal  = atof(argv[7]);
 		if (argc > 8) max_iter        = atoi(argv[8]);
+		if (argc > 9) sweeps          = atoi(argv[9]);
 	}
 	else
 		Debug("ERROR : Wrong parameterinput", 1);
