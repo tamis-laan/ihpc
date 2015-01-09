@@ -3,7 +3,7 @@ project(ihpc)
 set(CMAKE_C_COMPILER mpicc)
 set(CMAKE_CXX_COMPILER mpic++)
 
-set(CMAKE_CXX_RELEASE_FLAGS "-ffast-math")
+set(CMAKE_CXX_RELEASE_FLAGS "${CMAKE_CXX_RELEASE_FLAGS} -ffast-math")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_executable(ihpc MPI_Poisson.cpp)
