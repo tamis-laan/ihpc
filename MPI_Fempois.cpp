@@ -84,6 +84,7 @@ scope_timer::duration d_computation(0);
 scope_timer::duration d_communication_local(0);
 scope_timer::duration d_communication_global(0);
 scope_timer::duration d_idle(0);
+int iterations = 0;
 
 void Setup_Proc_Grid();
 void Setup_Grid();
@@ -499,6 +500,7 @@ void Solve()
 	r1 = 2 * precision_goal;
 	while ((count < max_iter) && (r1 > precision_goal))
 	{
+		++iterations;
 		{
 			scope_timer scope(d_computation);
 			/* r1 = r' * r */
@@ -694,7 +696,8 @@ int main(int argc, char **argv)
 				meta << "\"communication global\" : " << timings[2] << ", ";
 				meta << "\"idle\" : " << timings[3] << ", ";
 				meta << "\"total\" : " << timings[4];
-			meta << "}";
+			meta << "}, ";
+			meta << "\"iterations\" : " << iterations;
 		meta << "}";
 	}
 	
