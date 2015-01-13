@@ -80,10 +80,10 @@ int N_vert;			/* number of vertices */
 Matrixrow *A;			/* matrix A */
 
 /* timings */
-scope_timer::duration d_computation;
-scope_timer::duration d_communication_local;
-scope_timer::duration d_communication_global;
-scope_timer::duration d_idle;
+scope_timer::duration d_computation(0);
+scope_timer::duration d_communication_local(0);
+scope_timer::duration d_communication_global(0);
+scope_timer::duration d_idle(0);
 
 void Setup_Proc_Grid();
 void Setup_Grid();
@@ -647,7 +647,7 @@ int main(int argc, char **argv)
 
 	start_timer();
 
-	scope_timer::duration d_total;
+	scope_timer::duration d_total(0);
 	{
 		scope_timer scope(d_total);
 		Setup_Proc_Grid();
